@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#2a1033" />
+    <title>Candy Cascade</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23ff5fa2' stroke='%23fff4e6' stroke-width='6'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffd84a'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <h1 class="wordmark">Candy Cascade</h1>
+        <nav class="topbar-actions" aria-label="Game menu">
+          <button type="button" class="chip" id="btn-paytable">Pays and rules</button>
+          <button type="button" class="chip" id="btn-sound" aria-pressed="false">Sound off</button>
+          <button type="button" class="chip" id="btn-reset">Reset balance</button>
+        </nav>
+      </header>
+
+      <main class="stage" id="stage" aria-label="Game board"></main>
+
+      <section class="status">
+        <div class="status-row">
+          <div class="tag" id="fs-left" hidden>Free spins left <strong id="fs-left-value">0</strong></div>
+          <div class="win"><span>Win</span> <strong id="win">0.00</strong></div>
+          <div class="tag" id="fs-total" hidden>Feature total <strong id="fs-total-value">0.00</strong></div>
+        </div>
+        <p class="message" id="message" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="controls" aria-label="Controls">
+        <div class="readout" style="grid-area: balance">
+          <span class="readout-label">Balance</span>
+          <strong class="readout-value" id="balance">0.00</strong>
+        </div>
+
+        <div class="readout bet" style="grid-area: bet">
+          <span class="readout-label" id="bet-label">Bet</span>
+          <div class="stepper">
+            <button type="button" class="round" id="bet-down" aria-label="Lower bet">&minus;</button>
+            <strong class="readout-value" id="bet" aria-labelledby="bet-label">1.00</strong>
+            <button type="button" class="round" id="bet-up" aria-label="Raise bet">+</button>
+          </div>
+        </div>
+
+        <button type="button" class="toggle" id="btn-ante" aria-pressed="false" style="grid-area: ante">
+          <span class="toggle-title">Ante bet</span>
+          <span class="toggle-note" id="ante-note">Off</span>
+        </button>
+
+        <button type="button" class="spin" id="btn-spin" style="grid-area: spin" aria-keyshortcuts="Space">Spin</button>
+
+        <button type="button" class="toggle buy" id="btn-buy" style="grid-area: buy">
+          <span class="toggle-title">Buy free spins</span>
+          <span class="toggle-note" id="buy-note">100.00</span>
+        </button>
+
+        <div class="auto" style="grid-area: auto">
+          <button type="button" class="toggle" id="btn-auto" aria-haspopup="true" aria-expanded="false">
+            <span class="toggle-title" id="auto-title">Autoplay</span>
+            <span class="toggle-note" id="auto-note">Choose spins</span>
+          </button>
+          <div class="auto-menu" id="auto-menu" hidden>
+            <button type="button" data-auto="10">10</button>
+            <button type="button" data-auto="25">25</button>
+            <button type="button" data-auto="50">50</button>
+            <button type="button" data-auto="100">100</button>
+          </div>
+        </div>
+
+        <button type="button" class="toggle" id="btn-turbo" aria-pressed="false" style="grid-area: turbo">
+          <span class="toggle-title">Turbo</span>
+          <span class="toggle-note" id="turbo-note">Off</span>
+        </button>
+      </section>
+    </div>
+
+    <dialog id="dlg-paytable" class="sheet" aria-labelledby="paytable-title">
+      <div class="sheet-head">
+        <h2 id="paytable-title">Pays and rules</h2>
+        <button type="button" class="chip" data-close>Close</button>
+      </div>
+      <div class="sheet-body" id="paytable-body"></div>
+    </dialog>
+
+    <dialog id="dlg-buy" class="confirm" aria-labelledby="buy-title">
+      <h2 id="buy-title">Buy free spins?</h2>
+      <p id="buy-text"></p>
+      <div class="confirm-actions">
+        <button type="button" class="chip" data-close>Cancel</button>
+        <button type="button" class="chip primary" id="buy-confirm">Buy free spins</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlg-reset" class="confirm" aria-labelledby="reset-title">
+      <h2 id="reset-title">Reset balance?</h2>
+      <p id="reset-text"></p>
+      <div class="confirm-actions">
+        <button type="button" class="chip" data-close>Cancel</button>
+        <button type="button" class="chip primary" id="reset-confirm">Reset balance</button>
+      </div>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
