@@ -575,7 +575,7 @@ describe('inputs and config validation', () => {
   });
 
   it('rejects broken configs', () => {
-    expect(() => spin(makeConfig({ reels: { base: { symbols: [1, 2, 3], scatter: 1, bomb: 0 } } }), 1, 'base', 1)).toThrow();
+    expect(() => spin(makeConfig({ reels: { base: { ...reel({ red: 1 }), symbols: [1, 2, 3] } } }), 1, 'base', 1)).toThrow();
     expect(() => spin(makeConfig({ reels: { base: reel({ red: 1.5 }) } }), 1, 'base', 1)).toThrow();
     expect(() => spin(makeConfig({ reels: { base: reel({}) } }), 1, 'base', 1)).toThrow();
     expect(() => spin(makeConfig({ payTiers: [10, 8, 12] }), 1, 'base', 1)).toThrow();

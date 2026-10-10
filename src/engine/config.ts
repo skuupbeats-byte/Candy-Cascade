@@ -29,6 +29,18 @@ export interface ReelWeights {
   scatter: number;
   /** Weight of the multiplier bomb. Only meaningful for free spins. */
   bomb: number;
+  /**
+   * "Hot symbol" spins. On `chancePer1000` out of every 1000 spins, one
+   * symbol is picked (using `pickWeights`, one per symbol) and its weight is
+   * multiplied by `boost` for that whole spin, refills included. This makes
+   * symbol counts clumpy - fewer, bigger wins - which is where the game's
+   * volatility comes from. Set `chancePer1000` to 0 to switch it off.
+   */
+  hot: {
+    chancePer1000: number;
+    boost: number;
+    pickWeights: readonly number[];
+  };
 }
 
 export interface GameConfig {
@@ -91,6 +103,14 @@ export interface GameConfig {
   startingBalance: number;
 }
 
+// One list of symbol weights is shared by all three bags; they differ in
+// scatters, bombs and how often (and how strongly) a symbol runs hot.
+//                    red   purple green blue  apple plum  melon grapes banana
+const SYMBOL_WEIGHTS = [2730, 3060, 3430, 3840, 4300, 4820, 5390, 6040, 6770];
+const EVEN_PICK = [1, 1, 1, 1, 1, 1, 1, 1, 1];
+const HOT_BASE = { chancePer1000: 384, boost: 3, pickWeights: EVEN_PICK };
+const HOT_FREE = { chancePer1000: 280, boost: 8, pickWeights: EVEN_PICK };
+
 export const CONFIG: GameConfig = {
   title: 'Candy Cascade',
   cols: 6,
@@ -122,21 +142,20 @@ export const CONFIG: GameConfig = {
   bomb: {
     name: 'Multiplier bomb',
     values: [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 50, 100],
-    weights: [300, 240, 180, 130, 90, 60, 40, 28, 18, 12, 8, 3, 1],
+    weights: [260, 220, 180, 140, 110, 85, 70, 55, 45, 35, 28, 16, 8],
   },
 
   reels: {
-    //                 red  purple green blue apple plum  melon grapes banana
-    base: { symbols: [400, 550, 700, 850, 1000, 1150, 1400, 1600, 1900], scatter: 190, bomb: 0 },
-    ante: { symbols: [400, 550, 700, 850, 1000, 1150, 1400, 1600, 1900], scatter: 230, bomb: 0 },
-    free: { symbols: [400, 550, 700, 850, 1000, 1150, 1400, 1600, 1900], scatter: 150, bomb: 90 },
+    base: { symbols: SYMBOL_WEIGHTS, scatter: 745, bomb: 0, hot: HOT_BASE },
+    ante: { symbols: SYMBOL_WEIGHTS, scatter: 913, bomb: 0, hot: HOT_BASE },
+    free: { symbols: SYMBOL_WEIGHTS, scatter: 800, bomb: 312, hot: HOT_FREE },
   },
 
   ante: { costMultiplier: 1.25 },
 
   buy: {
     costMultiplier: 100,
-    scatterCountWeights: { 4: 950, 5: 46, 6: 4 },
+    scatterCountWeights: { 4: 897, 5: 94, 6: 9 },
   },
 
   maxWinMultiplier: 21100,

@@ -4,7 +4,6 @@ export * from './rng';
 export {
   spin,
   simulateRound,
-  simulateFreeSpins,
   newRoundSummary,
   findWins,
   symbolPay,

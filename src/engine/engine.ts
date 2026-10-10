@@ -27,6 +27,16 @@ export function symbolCodes(config: GameConfig): { SCATTER: number; BOMB: number
 // Compiled config: lookup tables derived once per config object.
 // ---------------------------------------------------------------------------
 
+/** The bags a spin can draw from: the normal one, plus one per possible hot symbol. */
+interface ReelSet {
+  normal: Uint8Array;
+  hot: Uint8Array[];
+  /** Hot-spin chance out of 1000. */
+  hotChance: number;
+  /** Lookup table for picking the hot symbol. */
+  hotPick: Uint8Array;
+}
+
 interface Compiled {
   cells: number;
   cols: number;
@@ -39,7 +49,7 @@ interface Compiled {
   payX100: Int32Array;
   /** scatterPayX100[count] in hundredths of the bet. */
   scatterPayX100: Int32Array;
-  tables: { base: Uint8Array; ante: Uint8Array; free: Uint8Array };
+  reels: { base: ReelSet; ante: ReelSet; free: ReelSet; buy: ReelSet };
   bombTable: Uint16Array;
   buyScatterTable: Uint8Array;
   triggerCount: number;
@@ -80,14 +90,41 @@ function buildTable(entries: Array<[code: number, weight: number]>, what: string
   return out;
 }
 
-function reelTable(config: GameConfig, reel: ReelWeights, name: string): Uint8Array {
+function reelSet(config: GameConfig, reel: ReelWeights, name: string, withScatter = true): ReelSet {
   const nSym = config.symbols.length;
   if (reel.symbols.length !== nSym) {
     throw new Error(`reels.${name}.symbols needs ${nSym} weights, got ${reel.symbols.length}`);
   }
-  const entries: Array<[number, number]> = reel.symbols.map((w, i) => [i, w]);
-  entries.push([nSym, reel.scatter], [nSym + 1, reel.bomb]);
-  return Uint8Array.from(buildTable(entries, `reels.${name}`));
+  const table = (hotSymbol: number): Uint8Array => {
+    const entries: Array<[number, number]> = reel.symbols.map((w, i) => [
+      i,
+      i === hotSymbol ? Math.round(w * reel.hot.boost) : w,
+    ]);
+    entries.push([nSym, withScatter ? reel.scatter : 0], [nSym + 1, reel.bomb]);
+    return Uint8Array.from(buildTable(entries, `reels.${name}`));
+  };
+  const hot = reel.hot;
+  if (!Number.isInteger(hot.chancePer1000) || hot.chancePer1000 < 0 || hot.chancePer1000 > 1000) {
+    throw new Error(`reels.${name}.hot.chancePer1000 must be an integer from 0 to 1000`);
+  }
+  if (!(hot.boost >= 0)) throw new Error(`reels.${name}.hot.boost must not be negative`);
+  if (hot.pickWeights.length !== nSym) throw new Error(`reels.${name}.hot.pickWeights needs ${nSym} weights`);
+  const active = hot.chancePer1000 > 0;
+  return {
+    normal: table(-1),
+    hot: active ? reel.symbols.map((_, i) => table(i)) : [],
+    hotChance: hot.chancePer1000,
+    hotPick: active
+      ? Uint8Array.from(buildTable(hot.pickWeights.map((w, i) => [i, w] as [number, number]), `reels.${name}.hot.pickWeights`))
+      : new Uint8Array(0),
+  };
+}
+
+/** Choose the bag for one spin: usually the normal one, sometimes a hot-symbol one. */
+function pickTable(set: ReelSet, rng: Rng): Uint8Array {
+  if (set.hotChance === 0) return set.normal;
+  if (rng.int(1000) >= set.hotChance) return set.normal;
+  return set.hot[set.hotPick[rng.int(set.hotPick.length)]];
 }
 
 function compile(config: GameConfig): Compiled {
@@ -160,10 +197,12 @@ function compile(config: GameConfig): Compiled {
     minCount: tiers[0],
     payX100,
     scatterPayX100,
-    tables: {
-      base: reelTable(config, config.reels.base, 'base'),
-      ante: reelTable(config, config.reels.ante, 'ante'),
-      free: reelTable(config, config.reels.free, 'free'),
+    reels: {
+      base: reelSet(config, config.reels.base, 'base'),
+      ante: reelSet(config, config.reels.ante, 'ante'),
+      free: reelSet(config, config.reels.free, 'free'),
+      // The bought spin lands exactly the scatters it was given, no extras.
+      buy: reelSet(config, config.reels.base, 'base', false),
     },
     bombTable,
     buyScatterTable,
@@ -202,12 +241,13 @@ function snapshot(c: Compiled): GridSnapshot {
 function playSpin(
   c: Compiled,
   rng: Rng,
-  table: Uint8Array,
+  reels: ReelSet,
   forcedScatters: number,
   out: SpinOutcome,
   rec: SpinResult | null,
 ): void {
   const { cells, cols, rows, nSym, grid, bombValues, counts, bombTable, minCount, payX100 } = c;
+  const table = pickTable(reels, rng);
   const tableLen = table.length;
   const bombLen = bombTable.length;
   const BOMB = c.bomb;
@@ -360,7 +400,7 @@ function playRound(c: Compiled, mode: Mode, rng: Rng, summary: RoundSummary, rec
   const out = scratchOutcome;
   const cap = c.capX100;
 
-  const baseTable = mode === 'ante' ? c.tables.ante : c.tables.base;
+  const baseTable = mode === 'ante' ? c.reels.ante : mode === 'buy' ? c.reels.buy : c.reels.base;
   const forced = mode === 'buy' ? c.buyScatterTable[rng.int(c.buyScatterTable.length)] : 0;
   const baseRec = rec ? rec.baseSpin : null;
   playSpin(c, rng, baseTable, forced, out, baseRec);
@@ -381,7 +421,7 @@ function playRound(c: Compiled, mode: Mode, rng: Rng, summary: RoundSummary, rec
       remaining--;
       played++;
       const fsRec = rec ? emptySpinResult() : null;
-      playSpin(c, rng, c.tables.free, 0, out, fsRec);
+      playSpin(c, rng, c.reels.free, 0, out, fsRec);
       if (out.scatters >= c.retriggerCount) {
         remaining += c.retriggerSpins;
         if (fsRec) fsRec.freeSpinsAwarded = c.retriggerSpins;
@@ -465,28 +505,6 @@ export function simulateRound(
   if (rng) rng.reseed(seed);
   playRound(c, mode, rng ?? new Rng(seed), summary, null);
   return summary;
-}
-
-/**
- * Play `count` free spins only (no triggering spin, retriggers included) and
- * return the total in hundredths of the bet. Used by the tuner to measure the
- * value of the feature on its own.
- */
-export function simulateFreeSpins(config: GameConfig, seed: number, rng?: Rng): number {
-  const c = compile(config);
-  const r = rng ?? new Rng(seed);
-  if (rng) rng.reseed(seed);
-  const out = scratchOutcome;
-  let remaining = c.freeSpins;
-  let total = 0;
-  while (remaining > 0) {
-    remaining--;
-    playSpin(c, r, c.tables.free, 0, out, null);
-    if (out.scatters >= c.retriggerCount) remaining += c.retriggerSpins;
-    total += out.winX100;
-    if (total >= c.capX100) return c.capX100;
-  }
-  return total;
 }
 
 // ---------------------------------------------------------------------------

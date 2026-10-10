@@ -11,10 +11,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "simulate": "tsx src/sim/cli.ts",
-    "tune": "tsx src/sim/tune.ts"
+    "simulate": "tsx src/sim/cli.ts"
   },
   "dependencies": {
+    "@fontsource-variable/nunito": "^5.3.0",
+    "@fontsource/lilita-one": "^5.3.0",
     "pixi.js": "^8.22.0"
   },
   "devDependencies": {

@@ -17,6 +17,7 @@ export function reel(weights: Record<string, number>): ReelWeights {
     symbols: CONFIG.symbols.map((s) => weights[s.id] ?? 0),
     scatter: weights.scatter ?? 0,
     bomb: weights.bomb ?? 0,
+    hot: { chancePer1000: 0, boost: 1, pickWeights: CONFIG.symbols.map(() => 1) },
   };
 }
 
