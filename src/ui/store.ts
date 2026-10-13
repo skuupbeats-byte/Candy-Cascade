@@ -18,7 +18,8 @@ export function defaults(): Saved {
     bet: CONFIG.defaultBet,
     ante: false,
     turbo: false,
-    sound: false,
+    // On by default now that the game has its own music (it still only starts after the first click).
+    sound: true,
   };
 }
 

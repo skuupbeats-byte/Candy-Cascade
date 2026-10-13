@@ -4,16 +4,21 @@
  * moving the round state machine along.
  */
 import { CONFIG, type Mode, type RoundResult, type SpinResult, type SymbolWin, randomSeed, roundCost, spin } from '../engine';
-import { credits, multiple, plural } from './format';
+import { BATTLE } from '../battle/logic';
+import { credits, isPointsMode, multiple, plural, setPointsMode } from './format';
 import { Hud } from './hud';
 import type { Scene } from './scene';
 import { Sound } from './sound';
+import { IconEditor } from './icons';
+import { setupVolume } from './volume';
 import { RoundMachine } from './stateMachine';
 import { type Saved, load, save } from './store';
 import { ease } from './tween';
 
 const MINT = 0x58e0c0;
 const TURBO_SPEED = 2.6;
+/** Normal playback speed: a bit slower than the animations were first made, so free spins and battle spins are easier to follow. */
+const BASE_SPEED = 0.7;
 const IDLE_HINT = 'Press Spin or the spacebar to play';
 
 /** Big-win sequence tiers, by round win as a multiple of the bet. */
@@ -38,12 +43,18 @@ export class Game {
   private symbolImages = new Map<number, Promise<string>>();
   /** Rounds played since the page loaded (handy for tests). */
   roundsPlayed = 0;
+  /** In Battle mode, what the spacebar does. While set, the classic spin is off. */
+  battleKey: (() => void) | null = null;
 
   constructor(private scene: Scene) {
     this.saved = load();
     this.shownBalanceCents = this.saved.balanceCents;
     this.sound.setEnabled(this.saved.sound);
-    this.scene.anim.speed = this.saved.turbo ? TURBO_SPEED : 1;
+    setupVolume(this.sound);
+    const symbolIds = [...CONFIG.symbols.map((s) => s.id), 'scatter', 'bomb'];
+    const icons = new IconEditor(this.scene, symbolIds, () => this.symbolImages.clear());
+    void icons.applySaved();
+    this.scene.anim.speed = this.saved.turbo ? TURBO_SPEED : BASE_SPEED;
     this.scene.grid.onColumnLand = (col) => this.sound.land(col);
 
     this.hud = new Hud({
@@ -56,11 +67,13 @@ export class Game {
       stopAutoplay: () => this.stopAutoplay(),
       toggleTurbo: () => {
         this.update(() => (this.saved.turbo = !this.saved.turbo));
-        this.scene.anim.speed = this.saved.turbo ? TURBO_SPEED : 1;
+        this.scene.anim.speed = this.saved.turbo ? TURBO_SPEED : BASE_SPEED;
       },
       toggleSound: () => {
         this.update(() => (this.saved.sound = !this.saved.sound));
         this.sound.setEnabled(this.saved.sound);
+        // Turning sound on between rounds starts the background music right away.
+        if (this.saved.sound && this.machine.isIdle) this.sound.playMusic('base');
       },
       resetBalance: () => {
         if (!this.machine.isIdle) return;
@@ -133,13 +146,61 @@ export class Game {
   }
 
   private onKey(event: KeyboardEvent): void {
-    if (event.code !== 'Space' || event.repeat || this.hud.dialogOpen) return;
+    if (event.code !== 'Space' || event.repeat || this.hud.dialogOpen || document.querySelector('dialog[open]')) return;
     const target = event.target;
     // A focused button keeps its normal spacebar behaviour.
-    if (target instanceof HTMLButtonElement || target instanceof HTMLInputElement) return;
+    if (target instanceof HTMLButtonElement || target instanceof HTMLInputElement || target instanceof HTMLSelectElement) return;
     event.preventDefault();
     if (this.scene.bannerOpen) this.scene.dismissBanner();
+    else if (this.battleKey) this.battleKey();
     else if (!this.autoplayOn) void this.playOne(false);
+  }
+
+  // ------------------------------------------------------------ battle mode
+
+  /** True when no round is being played. */
+  get isIdle(): boolean {
+    return this.machine.isIdle;
+  }
+
+  /** Show or hide the Battle layout (players on top, battle buttons instead of the classic controls). */
+  setBattleLook(on: boolean): void {
+    document.getElementById('app')?.classList.toggle('mode-battle', on);
+    setPointsMode(on);
+    this.hud.setWin(0);
+  }
+
+  /** Write a line in the status area under the board. */
+  say(text: string): void {
+    this.hud.setMessage(text);
+  }
+
+  /** The sound of a hit landing on a player. */
+  hitSound(): void {
+    this.sound.bomb();
+  }
+
+  /**
+   * One spin for a battle: a base round at a bet of 1 (or a bought free spins
+   * round), played back in full without touching the classic balance.
+   */
+  /** Start the background music again if it stopped (after a mini game, say). */
+  resumeMusic(): void {
+    if (this.saved.sound) this.sound.playMusic('base');
+  }
+
+  async playBattleSpin(buy = false): Promise<RoundResult | null> {
+    if (!this.machine.isIdle) return null;
+    const seed = randomSeed();
+    const result = spin(CONFIG, 1, buy ? 'buy' : 'base', seed);
+    this.lastSeed = seed;
+    await this.present(result);
+    this.hud.setMessage('');
+    // Battle: say clearly how many points this spin gave.
+    const gained = Math.round(result.totalWin * BATTLE.pointsPerBet);
+    if (gained > 0) await this.scene.floatText(`+${gained.toLocaleString('en-US')} points !`, undefined, undefined, undefined, 110);
+    else await this.scene.floatText('Aucun point', undefined, undefined, 0xcdb2d8, 64);
+    return result;
   }
 
   private requestBuy(): void {
@@ -226,6 +287,7 @@ export class Game {
       this.hud.setFreeSpins(null);
       this.setWinNow(result.payout);
       this.machine.reset();
+      this.sound.playMusic('base');
     }
     this.roundsPlayed++;
   }
@@ -239,6 +301,8 @@ export class Game {
     this.setWinNow(0);
     hud.setMessage(result.mode === 'buy' ? 'Free spins bought' : '');
     machine.transition('spinning');
+    // Background music for normal play. This runs inside the click or key press, which the browser needs to allow audio.
+    this.sound.playMusic('base');
     this.sound.spin();
     await grid.dropIn(result.baseSpin.initialGrid);
     machine.transition('tumbling');
@@ -247,12 +311,15 @@ export class Game {
     const feature = result.triggered && result.freeSpins.length > 0;
     if (feature) {
       machine.transition('freeSpinIntro');
+      // Entering the free spins: the bonus music takes over from the background music.
+      this.sound.playMusic('bonus');
       const awarded = result.baseSpin.freeSpinsAwarded;
       await scene.showBanner({
         title: 'Free spins',
         lines: [`${plural(result.baseSpin.scatterCount, 'lollipop')} landed`, `${awarded} free spins with multiplier bombs`],
-        holdMs: 1700,
+        holdMs: 3400,
         color: MINT,
+        symbolCode: CONFIG.symbols.length, // the lollipop (or the picture chosen for it) spins, grows and rains down
       });
 
       machine.transition('freeSpins');
@@ -302,6 +369,9 @@ export class Game {
       machine.transition('idle');
     }
 
+    // The feature is over: back to the background music.
+    if (feature) this.sound.playMusic('base');
+
     hud.setFreeSpins(null);
     this.setWinNow(result.payout);
     if (result.payout > 0) hud.setMessage(`You won ${credits(result.payout)}`);
@@ -322,10 +392,11 @@ export class Game {
       hud.setMessage(describeWins(step.wins));
       const cx = step.removed.reduce((sum, p) => sum + grid.cellX(p), 0) / step.removed.length;
       const cy = step.removed.reduce((sum, p) => sum + grid.cellY(p), 0) / step.removed.length;
-      void scene.floatText(`+${credits(step.stepWin * bet)}`, cx, cy);
+      void scene.floatText(`+${credits(step.stepWin * bet)}`, cx, cy, undefined, isPointsMode() ? 96 : 64);
       void this.countWin(x * bet, 400);
       await grid.highlight(step.removed);
-      this.sound.pop();
+      // The fruits break: play the "supprime" sound, on every tumble.
+      this.sound.supprime();
       await grid.pop(step.removed);
       await grid.tumble(step.removed, step.gridAfter);
       await anim.wait(90);
@@ -385,6 +456,6 @@ export class Game {
 
 function describeWins(wins: readonly SymbolWin[]): string {
   return wins
-    .map((w) => `${w.count} x ${CONFIG.symbols[w.symbol].name} pays ${multiple(w.pay)}`)
+    .map((w) => (isPointsMode() ? `${w.count} x ${CONFIG.symbols[w.symbol].name} = +${credits(w.pay)}` : `${w.count} x ${CONFIG.symbols[w.symbol].name} pays ${multiple(w.pay)}`))
     .join(', ');
 }

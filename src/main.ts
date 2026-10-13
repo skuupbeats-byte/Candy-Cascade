@@ -2,6 +2,7 @@ import '@fontsource/lilita-one';
 import '@fontsource-variable/nunito';
 import './ui/style.css';
 import { CONFIG } from './engine';
+import { BattleUi } from './battle/ui';
 import { Game } from './ui/game';
 import { Scene } from './ui/scene';
 
@@ -12,6 +13,7 @@ async function start(): Promise<void> {
   await Promise.allSettled([document.fonts.load('40px "Lilita One"'), document.fonts.load('16px "Nunito Variable"')]);
   const scene = await Scene.create(host, CONFIG);
   const game = new Game(scene);
+  new BattleUi(game);
   if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = game;
 }
 

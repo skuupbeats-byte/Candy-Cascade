@@ -75,11 +75,11 @@ describe('round state machine', () => {
 });
 
 describe('saved state', () => {
-  it('defaults to the starting balance and default bet, with sound off', () => {
+  it('defaults to the starting balance and default bet, with sound on', () => {
     const d = defaults();
     expect(d.balanceCents).toBe(CONFIG.startingBalance * 100);
     expect(d.bet).toBe(CONFIG.defaultBet);
-    expect(d.sound).toBe(false);
+    expect(d.sound).toBe(true);
     expect(d.ante).toBe(false);
     expect(d.turbo).toBe(false);
   });

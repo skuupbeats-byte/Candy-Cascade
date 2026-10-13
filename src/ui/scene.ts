@@ -1,8 +1,9 @@
 /** The PixiJS scene: board frame, grid, and the overlays drawn on top of it. */
-import { Application, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
+import { Application, Container, Graphics, ImageSource, Sprite, Text, Texture } from 'pixi.js';
 import type { BombHit, GameConfig } from '../engine';
 import { CELL_W, DISPLAY_FONT, GridView } from './gridView';
 import { createDotTexture, createSymbolTextures } from './symbolArt';
+import { rasterizeArt } from './artDefaults';
 import { Animator, ease } from './tween';
 
 const FRAME = 22;
@@ -22,6 +23,8 @@ export interface BannerOptions {
   /** A number that counts up under the title. */
   amount?: { to: number; format: (value: number) => string; durationMs: number };
   confetti?: boolean;
+  /** A symbol code: it spins and grows in the middle of the banner while a rain of it falls over the whole screen. */
+  symbolCode?: number;
   /** How long the banner stays once everything is shown. A tap or the spacebar closes it sooner. */
   holdMs: number;
   color?: number;
@@ -45,7 +48,14 @@ export class Scene {
   private banner: Container | null = null;
   private bannerSkip = false;
   private flakes: Flake[] = [];
+  /** Full-screen layer above the board, for the symbol rain. It ignores taps. */
+  private rainLayer = new Container();
+  private rain: Flake[] = [];
+  /** The big symbol that spins and grows during the free spins banner. */
+  private hero: { sprite: Sprite; age: number } | null = null;
   private textures: Texture[];
+  /** The drawn symbols, kept so a replaced picture can be put back. */
+  private defaultTextures: Texture[];
   private dot: Texture;
   private boardW: number;
   private boardH: number;
@@ -61,7 +71,26 @@ export class Scene {
       preference: 'webgl',
     });
     host.appendChild(app.canvas);
-    return new Scene(app, host, config);
+    const scene = new Scene(app, host, config);
+    await scene.useBundledArt([...config.symbols.map((s) => s.id), 'scatter', 'bomb']);
+    return scene;
+  }
+
+  /** Replace some drawn symbols by the bundled icons. They become the defaults, so "Rétablir" brings them back. */
+  private async useBundledArt(ids: readonly string[]): Promise<void> {
+    const art = await rasterizeArt(ids);
+    for (const [id, url] of art) {
+      const code = ids.indexOf(id);
+      if (code < 0) continue;
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const texture = new Texture({ source: new ImageSource({ resource: img, resolution: 2, autoGenerateMipmaps: true }) });
+      this.defaultTextures[code].destroy(true);
+      this.defaultTextures[code] = texture;
+      this.textures[code] = texture;
+    }
+    this.grid.refreshArt();
   }
 
   private constructor(
@@ -72,13 +101,15 @@ export class Scene {
     this.anim = new Animator(app.ticker);
     const ids = [...config.symbols.map((s) => s.id), 'scatter', 'bomb'];
     this.textures = createSymbolTextures(app.renderer, ids);
+    this.defaultTextures = [...this.textures];
     this.dot = createDotTexture(app.renderer);
     this.grid = new GridView(this.anim, this.textures, this.dot, config);
     this.boardW = this.grid.boardWidth;
     this.boardH = this.grid.boardHeight;
 
     this.root.addChild(this.buildFrame(config), this.grid, this.overlay);
-    app.stage.addChild(this.root);
+    this.rainLayer.eventMode = 'none';
+    app.stage.addChild(this.root, this.rainLayer);
 
     this.badgeText = new Text({
       text: 'x0',
@@ -90,7 +121,10 @@ export class Scene {
     this.badge.visible = false;
     this.overlay.addChild(this.badge);
 
-    app.ticker.add((t) => this.updateConfetti(t.deltaMS));
+    app.ticker.add((t) => {
+      this.updateConfetti(t.deltaMS);
+      this.updateRain(t.deltaMS);
+    });
     app.renderer.on('resize', () => this.layout());
     new ResizeObserver(() => app.resize()).observe(host);
     this.layout();
@@ -128,6 +162,25 @@ export class Scene {
     const scale = Math.max(0.05, Math.min(width / totalW, height / totalH));
     this.root.scale.set(scale);
     this.root.position.set((width - this.boardW * scale) / 2, (height - (this.boardH - TOP_ROOM) * scale) / 2);
+  }
+
+  /**
+   * Replace a symbol with a picture (a square image as a data URL), or put the
+   * drawn one back with `null`. The board is redrawn at once.
+   */
+  async setSymbolArt(code: number, url: string | null): Promise<void> {
+    const old = this.textures[code];
+    if (url === null) {
+      this.textures[code] = this.defaultTextures[code];
+    } else {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      // The drawn symbols are 128 units wide baked at twice that, so a 256 pixel picture is read at resolution 2 to match.
+      this.textures[code] = new Texture({ source: new ImageSource({ resource: img, resolution: 2, autoGenerateMipmaps: true }) });
+    }
+    this.grid.refreshArt();
+    if (old !== this.defaultTextures[code] && old !== this.textures[code]) old.destroy(true);
   }
 
   /** A PNG data URL of a symbol, for the paytable. */
@@ -258,8 +311,18 @@ export class Scene {
     const pieces: Array<[Text, number]> = [[title, 110]];
     if (amount) pieces.push([amount, 130]);
     for (const line of lines) pieces.push([line, 52]);
-    const total = pieces.reduce((sum, [, height]) => sum + height, 0);
+    const heroRoom = options.symbolCode !== undefined ? 190 : 0;
+    const total = pieces.reduce((sum, [, height]) => sum + height, 0) + heroRoom;
     let y = -total / 2;
+    if (options.symbolCode !== undefined) {
+      const sprite = new Sprite(this.textures[options.symbolCode]);
+      sprite.anchor.set(0.5);
+      sprite.y = y + heroRoom / 2;
+      sprite.scale.set(0.2);
+      content.addChild(sprite);
+      this.hero = { sprite, age: 0 };
+      y += heroRoom;
+    }
     for (const [piece, height] of pieces) {
       piece.y = y + height / 2;
       y += height;
@@ -270,6 +333,7 @@ export class Scene {
     this.bannerSkip = false;
     this.overlay.addChild(banner);
     if (options.confetti) this.startConfetti(banner);
+    if (options.symbolCode !== undefined) this.startRain(options.symbolCode);
 
     banner.alpha = 0;
     await this.anim.tween(260, (t) => {
@@ -305,6 +369,7 @@ export class Scene {
 
     await this.anim.tween(180, (t) => (banner.alpha = 1 - t));
     this.stopConfetti();
+    this.stopRain();
     this.banner = null;
     banner.destroy({ children: true });
   }
@@ -319,6 +384,50 @@ export class Scene {
       sprite.rotation = Math.random() * Math.PI;
       parent.addChildAt(sprite, 1);
       this.flakes.push({ sprite, vx: (Math.random() - 0.5) * 0.08, vy: 0.16 + Math.random() * 0.22, spin: (Math.random() - 0.5) * 0.012 });
+    }
+  }
+
+  /** A rain of one symbol over the whole screen, not just the board. */
+  private startRain(code: number): void {
+    const { width, height } = this.app.screen;
+    const count = width < 600 ? 40 : 70;
+    for (let i = 0; i < count; i++) {
+      const sprite = new Sprite(this.textures[code]);
+      sprite.anchor.set(0.5);
+      sprite.scale.set(0.3 + Math.random() * 0.6);
+      sprite.position.set(Math.random() * width, -Math.random() * height * 1.2 - 60);
+      sprite.rotation = Math.random() * Math.PI * 2;
+      this.rainLayer.addChild(sprite);
+      this.rain.push({ sprite, vx: (Math.random() - 0.5) * 0.12, vy: 0.25 + Math.random() * 0.45, spin: (Math.random() - 0.5) * 0.01 });
+    }
+  }
+
+  private stopRain(): void {
+    for (const flake of this.rain) flake.sprite.destroy();
+    this.rain = [];
+    this.hero = null;
+  }
+
+  private updateRain(deltaMs: number): void {
+    const dt = Math.min(deltaMs, 100);
+    const { width, height } = this.app.screen;
+    for (const flake of this.rain) {
+      const s = flake.sprite;
+      s.x += flake.vx * dt;
+      s.y += flake.vy * dt;
+      s.rotation += flake.spin * dt;
+      if (s.y > height + 90) {
+        s.y = -90 - Math.random() * 200;
+        s.x = Math.random() * width;
+      }
+    }
+    // The big symbol spins on itself and grows with a little bounce, then keeps breathing.
+    const hero = this.hero;
+    if (hero && hero.sprite.parent) {
+      hero.age += dt;
+      const grow = ease.outBack(Math.min(1, hero.age / 900));
+      hero.sprite.scale.set((0.2 + 1.35 * grow) * (1 + 0.05 * Math.sin(hero.age / 240)));
+      hero.sprite.rotation = hero.age * 0.0062;
     }
   }
 

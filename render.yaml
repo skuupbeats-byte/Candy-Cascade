@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: candy-cascade
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npx vite build
+    startCommand: node server/server.mjs
+    envVars:
+      - key: NO_TLS
+        value: "1"
+      - key: NODE_VERSION
+        value: "22"

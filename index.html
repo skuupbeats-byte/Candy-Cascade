@@ -12,11 +12,16 @@
       <header class="topbar">
         <h1 class="wordmark">Candy Cascade</h1>
         <nav class="topbar-actions" aria-label="Game menu">
+          <button type="button" class="chip" id="btn-mode">Modes</button>
           <button type="button" class="chip" id="btn-paytable">Pays and rules</button>
           <button type="button" class="chip" id="btn-sound" aria-pressed="false">Sound off</button>
+          <button type="button" class="chip" id="btn-volume" aria-label="Réglage du volume">Volume</button>
+          <button type="button" class="chip" id="btn-icons">Icônes</button>
           <button type="button" class="chip" id="btn-reset">Reset balance</button>
         </nav>
       </header>
+
+      <section class="roster" id="roster" aria-label="Joueurs" hidden></section>
 
       <main class="stage" id="stage" aria-label="Game board"></main>
 
@@ -27,6 +32,19 @@
           <div class="tag" id="fs-total" hidden>Feature total <strong id="fs-total-value">0.00</strong></div>
         </div>
         <p class="message" id="message" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="battle-controls" id="battle-controls" aria-label="Tour de jeu" hidden>
+        <p class="bt-turn" id="bt-turn"></p>
+        <div class="bt-actions">
+          <button type="button" class="bt-btn spin-btn" id="bt-spin" aria-keyshortcuts="Space">Lancer les spins</button>
+          <button type="button" class="bt-btn attack-btn" id="bt-attack">Attaquer</button>
+          <button type="button" class="bt-btn defend-btn" id="bt-defend">Se défendre</button>
+          <button type="button" class="bt-btn free-btn" id="bt-free">Free spins</button>
+          <button type="button" class="bt-btn end-btn" id="bt-end">Fin du tour</button>
+        </div>
+        <button type="button" class="chip" id="bt-drink">Changer de verre</button>
+        <button type="button" class="chip" id="bt-finish">Terminer la partie</button>
       </section>
 
       <section class="controls" aria-label="Controls">
@@ -99,6 +117,217 @@
       <div class="confirm-actions">
         <button type="button" class="chip" data-close>Cancel</button>
         <button type="button" class="chip primary" id="reset-confirm">Reset balance</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlg-mode" class="confirm" aria-labelledby="mode-title">
+      <h2 id="mode-title">Choisis ton jeu</h2>
+      <div class="mode-list">
+        <button type="button" class="mode-card" id="mode-classic">
+          <strong>Jeu classique</strong>
+          <span>La machine à sous en solo, avec ton solde de crédits.</span>
+        </button>
+        <button type="button" class="mode-card battle" id="mode-battle">
+          <strong>Multijoueur Battle</strong>
+          <span>2 à 6 joueurs sur le même écran. Les spins rapportent des points, les points achètent des attaques et des boucliers. Chaque attaque fait boire les autres.</span>
+        </button>
+        <button type="button" class="mode-card battle" id="mode-minis">
+          <strong>Mini-jeux sur téléphones</strong>
+          <span>Joue directement aux mini-jeux (Click Rush, Flappy, Bomberman, Agar.io, Snake.io) sans lancer de Battle. Il faut 2 téléphones ou plus connectés.</span>
+        </button>
+        <button type="button" class="mode-card battle" id="mode-remote">
+          <strong>Battle sur téléphones</strong>
+          <span>Cet écran est la grille commune, chaque joueur joue depuis son téléphone (code ou QR code). Il faut lancer le petit serveur : <code>npm run play</code>.</span>
+        </button>
+      </div>
+      <p class="mode-note" id="mode-note" hidden>Choisir un mode arrête la partie en cours.</p>
+      <div class="confirm-actions">
+        <button type="button" class="chip" data-close>Fermer</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlg-lobby" class="confirm wide lobby" aria-labelledby="lobby-title">
+      <h2 id="lobby-title">Battle sur téléphones</h2>
+      <div class="lobby-join">
+        <div class="lobby-qr" id="lobby-qr" role="img" aria-label="QR code pour rejoindre la salle"></div>
+        <div class="lobby-info">
+          <p class="mode-note">Scanne le QR code avec ton téléphone, ou ouvre l'adresse et entre le code.</p>
+          <p class="lobby-code" id="lobby-code" aria-label="Code de la salle">····</p>
+          <p class="lobby-url" id="lobby-url"></p>
+          <p class="mode-note">Le téléphone affichera un avertissement de certificat (adresse https) : accepte-le une fois, il sert aux gestes du duel de sabres.</p>
+          <p class="mode-note" id="lobby-status" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+      <h3 class="pick-title" id="lobby-drinks-title">Les boissons</h3>
+      <div class="setup-drinks" id="lobby-drinks"></div>
+      <label class="setup-spins" for="lobby-spins" id="lobby-spins-label">
+        <span>Spins enchaînés à chaque tour</span>
+        <select id="lobby-spins"></select>
+      </label>
+      <h3 class="pick-title">Joueurs</h3>
+      <div class="lobby-seats" id="lobby-seats"></div>
+      <div id="lobby-minis" hidden>
+        <h3 class="pick-title">Choisis un mini-jeu</h3>
+        <p class="mode-note" id="lobby-minis-note">Il faut au moins 2 joueurs assis.</p>
+        <div class="mini-picker" id="lobby-minis-list"></div>
+      </div>
+      <div class="confirm-actions">
+        <button type="button" class="chip" data-close>Annuler</button>
+        <button type="button" class="chip primary" id="lobby-start" disabled>Lancer la partie</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlg-setup" class="confirm wide" aria-labelledby="setup-title">
+      <h2 id="setup-title">Nouvelle partie Battle</h2>
+      <div class="setup-players" id="setup-players"></div>
+      <button type="button" class="chip" id="setup-add">Ajouter un joueur</button>
+      <h3 class="pick-title">Les boissons</h3>
+      <p class="mode-note">Combien de parts dans un verre ? Bière, cocktail, shot : change les nombres comme tu veux, puis chaque joueur choisit sa boisson.</p>
+      <div class="setup-drinks" id="setup-drinks"></div>
+      <label class="setup-spins" for="setup-spins">
+        <span>Spins enchaînés à chaque tour</span>
+        <select id="setup-spins"></select>
+      </label>
+      <p class="mode-note">Chaque attaque se compte en parts de verre. La partie continue jusqu'à ce que vous la terminiez. Bois avec modération.</p>
+      <div class="confirm-actions">
+        <button type="button" class="chip" data-close>Annuler</button>
+        <button type="button" class="chip primary" id="setup-start">Lancer la partie</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlg-attack" class="confirm wide" aria-labelledby="attack-title">
+      <h2 id="attack-title">Attaquer</h2>
+      <p class="attack-points" id="attack-points"></p>
+      <p class="mode-note">Choisis combien de parts de bière chaque joueur doit boire, de 1 à autant que tu peux payer. Tu peux viser plusieurs joueurs.</p>
+      <div class="target-list" id="target-list"></div>
+      <p class="attack-total" id="attack-total"></p>
+      <div class="confirm-actions">
+        <button type="button" class="chip" data-close>Annuler</button>
+        <button type="button" class="chip primary" id="attack-confirm" disabled>Attaquer</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlg-defend" class="confirm wide" aria-labelledby="defend-title">
+      <h2 id="defend-title">Se défendre</h2>
+      <p class="attack-points" id="defend-points"></p>
+      <p class="mode-note" id="defend-note">Un bouclier absorbe les prochaines parts de bière qui te visent, quelle que soit sa taille. Il dure jusqu'au début de ton prochain tour.</p>
+      <div class="target-list" id="shield-picker"></div>
+      <p class="attack-total" id="defend-total"></p>
+      <div class="confirm-actions">
+        <button type="button" class="chip" data-close>Annuler</button>
+        <button type="button" class="chip primary" id="defend-confirm" disabled>Acheter</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlg-icons" class="sheet" aria-labelledby="icons-title">
+      <div class="sheet-head">
+        <h2 id="icons-title">Icônes du jeu</h2>
+        <button type="button" class="chip" data-close>Fermer</button>
+      </div>
+      <div class="sheet-body">
+        <p class="mode-note">Remplace une icône par une image de ton ordinateur ou de ton téléphone (galerie ou appareil photo). Les images restent sur cet appareil.</p>
+        <div class="icon-grid" id="icons-body"></div>
+        <p class="icons-note" id="icons-note" role="status" aria-live="polite"></p>
+        <div class="confirm-actions">
+          <button type="button" class="chip" id="icons-reset-all">Tout rétablir</button>
+        </div>
+        <input type="file" id="icon-file" accept="image/*" hidden />
+      </div>
+    </dialog>
+
+    <dialog id="dlg-crop" class="confirm crop" aria-labelledby="crop-title">
+      <h2 id="crop-title">Icône</h2>
+      <div class="crop-stage"><canvas id="crop-canvas" width="256" height="256" aria-label="Aperçu de l'icône"></canvas></div>
+      <p class="mode-note">Glisse l'image pour la déplacer, utilise le zoom pour l'ajuster.</p>
+      <label class="vol-row" for="crop-zoom">
+        <span>Zoom</span>
+        <input type="range" id="crop-zoom" min="20" max="400" step="1" value="100" />
+        <output></output>
+      </label>
+      <div class="crop-shapes" id="crop-shapes" role="group" aria-label="Forme">
+        <button type="button" class="chip" data-shape="none" aria-pressed="false">Carré</button>
+        <button type="button" class="chip" data-shape="rounded" aria-pressed="true">Arrondi</button>
+        <button type="button" class="chip" data-shape="circle" aria-pressed="false">Rond</button>
+      </div>
+      <label class="crop-border"><input type="checkbox" id="crop-border" /> Contour clair</label>
+      <div class="confirm-actions">
+        <button type="button" class="chip" data-close>Annuler</button>
+        <button type="button" class="chip" id="crop-recenter">Recentrer</button>
+        <button type="button" class="chip primary" id="crop-save">Valider</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlg-volume" class="confirm" aria-labelledby="volume-title">
+      <h2 id="volume-title">Volume</h2>
+      <label class="vol-row" for="vol-music">
+        <span>Musique</span>
+        <input type="range" id="vol-music" min="0" max="100" step="1" />
+        <output id="vol-music-out">45</output>
+      </label>
+      <label class="vol-row" for="vol-voice">
+        <span>Voix « supprime »</span>
+        <input type="range" id="vol-voice" min="0" max="200" step="1" />
+        <output id="vol-voice-out">100</output>
+      </label>
+      <label class="vol-row" for="vol-fx">
+        <span>Autres effets</span>
+        <input type="range" id="vol-fx" min="0" max="200" step="1" />
+        <output id="vol-fx-out">100</output>
+      </label>
+      <p class="mode-note">100 = le niveau normal, jusqu'à 200 pour plus fort. Le bouton « Sound » coupe ou remet tout le son.</p>
+      <div class="confirm-actions">
+        <button type="button" class="chip primary" data-close>Fermer</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlg-bbuy" class="confirm" aria-labelledby="bbuy-title">
+      <h2 id="bbuy-title">Acheter des free spins ?</h2>
+      <p id="bbuy-text"></p>
+      <div class="confirm-actions">
+        <button type="button" class="chip" data-close>Annuler</button>
+        <button type="button" class="chip primary" id="bbuy-confirm">Acheter</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlg-dodge" class="confirm wide dodge" aria-labelledby="dodge-title">
+      <h2 id="dodge-title"></h2>
+      <p id="dodge-text"></p>
+      <svg class="wheel" id="dodge-wheel" viewBox="-100 -100 200 200" role="img" aria-label="Roue de la chance">
+        <g id="dodge-sectors"></g>
+        <circle r="92" fill="none" stroke="#fff4e6" stroke-width="4"></circle>
+        <g id="dodge-needle" class="needle"><polygon points="-6,0 6,0 0,-88" fill="#fff4e6" stroke="#2a1033" stroke-width="2"></polygon></g>
+        <circle r="9" fill="#fff4e6" stroke="#2a1033" stroke-width="3"></circle>
+      </svg>
+      <div class="alloc-ctl dodge-ctl" id="dodge-ctl"></div>
+      <p class="dodge-odds" id="dodge-odds"></p>
+      <p class="dodge-result" id="dodge-result" role="status" aria-live="polite"></p>
+      <div class="confirm-actions">
+        <button type="button" class="chip" id="dodge-drink">Je bois</button>
+        <button type="button" class="chip primary" id="dodge-try">Tenter ma chance</button>
+        <button type="button" class="chip primary" id="dodge-next" hidden>Voir ce que je bois</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlg-hit" class="confirm hit" aria-labelledby="hit-title">
+      <h2 id="hit-title"></h2>
+      <p id="hit-text"></p>
+      <div class="glass-big" id="hit-glass" aria-hidden="true"></div>
+      <p class="glass-label" id="hit-glass2-label" hidden>Bière suivante</p>
+      <div class="glass-big" id="hit-glass2" aria-hidden="true" hidden></div>
+      <p class="hit-drink" id="hit-drink"></p>
+      <div class="confirm-actions">
+        <button type="button" class="chip primary" id="hit-ok">C'est bu !</button>
+      </div>
+    </dialog>
+
+    <dialog id="dlg-over" class="confirm wide" aria-labelledby="over-title">
+      <h2 id="over-title"></h2>
+      <p id="over-text"></p>
+      <div class="table-wrap"><table class="standings" id="over-table"></table></div>
+      <div class="confirm-actions">
+        <button type="button" class="chip" id="over-menu">Menu</button>
+        <button type="button" class="chip" id="over-again">Nouvelle partie</button>
+        <button type="button" class="chip primary" id="over-resume">Continuer</button>
       </div>
     </dialog>
 

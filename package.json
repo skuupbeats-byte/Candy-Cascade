@@ -2,27 +2,32 @@
   "name": "candy-cascade",
   "version": "1.0.0",
   "private": true,
-  "description": "Candy Cascade - a local, play-money, pay-anywhere tumbling slot game",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "simulate": "tsx src/sim/cli.ts"
+    "simulate": "tsx src/sim/cli.ts",
+    "play": "npm run build && node server/server.mjs",
+    "serve": "node server/server.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@fontsource-variable/nunito": "^5.3.0",
     "@fontsource/lilita-one": "^5.3.0",
-    "pixi.js": "^8.22.0"
+    "pixi.js": "^8.22.0",
+    "qrcode-generator": "^2.0.4",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.3"
-  }
+  },
+  "description": "Candy Cascade - a local, play-money, pay-anywhere tumbling slot game"
 }

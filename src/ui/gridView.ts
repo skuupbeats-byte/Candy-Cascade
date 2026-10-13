@@ -7,6 +7,11 @@ import { type Animator, ease } from './tween';
 export const CELL_W = 128;
 export const CELL_H = 112;
 const SYMBOL_SCALE = 104 / ART_SIZE;
+/** The lollipop (scatter) is drawn bigger than the others so it stands out. */
+const SCATTER_SCALE = 2;
+/** The big scatter is pushed down a little so it does not poke out of the top row, and the board mask lets it spill out at the sides and the bottom. */
+const SCATTER_DROP = 24;
+const SPILL = 36;
 export const DISPLAY_FONT = '"Lilita One", "Arial Rounded MT Bold", "Trebuchet MS", sans-serif';
 
 class SymbolView extends Container {
@@ -15,7 +20,10 @@ class SymbolView extends Container {
   code = -1;
   bombValue = 0;
 
-  constructor(private textures: Texture[]) {
+  constructor(
+    private textures: Texture[],
+    private scatterCode: number,
+  ) {
     super();
     this.sprite = new Sprite();
     this.sprite.anchor.set(0.5);
@@ -30,10 +38,19 @@ class SymbolView extends Container {
     this.addChild(this.sprite, this.valueLabel);
   }
 
+  /** Pick up the symbol's texture again, after its picture was replaced. */
+  refreshTexture(): void {
+    if (this.code >= 0) this.sprite.texture = this.textures[this.code];
+  }
+
   set(code: number, bombValue: number): void {
     this.code = code;
     this.bombValue = bombValue;
     this.sprite.texture = this.textures[code];
+    const big = code === this.scatterCode;
+    this.sprite.scale.set(big ? SYMBOL_SCALE * SCATTER_SCALE : SYMBOL_SCALE);
+    this.sprite.y = big ? SCATTER_DROP : 0;
+    this.zIndex = big ? 10 : 0; // above its neighbours
     this.valueLabel.visible = bombValue > 0;
     if (bombValue > 0) {
       this.valueLabel.text = `x${bombValue}`;
@@ -56,6 +73,7 @@ export class GridView extends Container {
   private fx = new Container();
   private dots: Sprite[] = [];
   private colors: number[];
+  private scatterCode: number;
   /** Called as each column lands, for sound. */
   onColumnLand: (column: number) => void = () => {};
 
@@ -66,6 +84,7 @@ export class GridView extends Container {
     config: GameConfig,
   ) {
     super();
+    this.scatterCode = config.symbols.length; // the scatter comes right after the paying symbols
     this.cols = config.cols;
     this.rows = config.rows;
     this.boardWidth = this.cols * CELL_W;
@@ -73,10 +92,17 @@ export class GridView extends Container {
     this.cells = new Array(this.cols * this.rows).fill(null);
     this.colors = [...config.symbols.map((s) => SYMBOL_COLORS[s.id] ?? 0xffffff), SYMBOL_COLORS.scatter, SYMBOL_COLORS.bomb];
 
-    const mask = new Graphics().rect(0, 0, this.boardWidth, this.boardHeight).fill(0xffffff);
+    const mask = new Graphics().rect(-SPILL, 0, this.boardWidth + 2 * SPILL, this.boardHeight + SPILL).fill(0xffffff);
     this.addChild(mask);
     this.layer.mask = mask;
+    this.layer.sortableChildren = true;
     this.addChild(this.layer, this.fx);
+  }
+
+  /** A symbol picture was replaced: show the new one on every symbol on the board. */
+  refreshArt(): void {
+    for (const view of this.cells) view?.refreshTexture();
+    for (const view of this.pool) view.refreshTexture();
   }
 
   cellX(position: number): number {
@@ -88,7 +114,7 @@ export class GridView extends Container {
   }
 
   private obtain(code: number, bombValue: number): SymbolView {
-    const view = this.pool.pop() ?? new SymbolView(this.textures);
+    const view = this.pool.pop() ?? new SymbolView(this.textures, this.scatterCode);
     view.set(code, bombValue);
     this.layer.addChild(view);
     return view;
